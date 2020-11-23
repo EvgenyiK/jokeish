@@ -23,16 +23,16 @@ type Joke struct {
 	Joke  string `json:"joke" binding:"required"`
 }
 
-type Jwks struct{
+type Jwks struct {
 	Keys []JSONWebKeys `json:"keys"`
 }
 
-type JSONWebKeys struct{
-	Kty string `json:"kty"`
-	Kid string `json:"kid"`
-	Use string `json:"use"`
-	N string `json:"n"`
-	E string `json:"e"`
+type JSONWebKeys struct {
+	Kty string   `json:"kty"`
+	Kid string   `json:"kid"`
+	Use string   `json:"use"`
+	N   string   `json:"n"`
+	E   string   `json:"e"`
 	X5c []string `json:"x5c"`
 }
 
@@ -48,26 +48,26 @@ var jokes = []Joke{
 
 func main() {
 
-	jwtMiddleware:= jwtmiddleware.New(jwtmiddleware.Options{
-		ValidationKeyGetter: func(token *jwt.Token)(interface{}, error){
-			aud:= os.Getenv("AUTH0_API_AUDIENCE")
-			checkAudience:= token.Claims.(jwt.MapClaims).VerifyAudience(aud, false)
+	jwtMiddleware := jwtmiddleware.New(jwtmiddleware.Options{
+		ValidationKeyGetter: func(token *jwt.Token) (interface{}, error) {
+			aud := os.Getenv("AUTH0_API_AUDIENCE")
+			checkAudience := token.Claims.(jwt.MapClaims).VerifyAudience(aud, false)
 			if !checkAudience {
-				return token,errors.New("Invalid audience.")
+				return token, errors.New("Invalid audience.")
 			}
 
-			iss:= os.Getenv("AUTH0_DOMAIN")
-			checkIss:= token.Claims.(jwt.MapClaims).VerifyIssuer(iss, false)
+			iss := os.Getenv("AUTH0_DOMAIN")
+			checkIss := token.Claims.(jwt.MapClaims).VerifyIssuer(iss, false)
 			if !checkIss {
 				return token, errors.New("Invalid issuser.")
 			}
 
-			cert,err:= getPemCert(token)
+			cert, err := getPemCert(token)
 			if err != nil {
 				log.Fatalf("could not get cert: %+v", err)
 			}
 
-			result,_:= jwt.ParseECPublicKeyFromPEM([]byte(cert))
+			result, _ := jwt.ParseECPublicKeyFromPEM([]byte(cert))
 			return result, nil
 		},
 		SigningMethod: jwt.SigningMethodRS256,
@@ -75,7 +75,6 @@ func main() {
 
 	// register our actual jwtMiddleware
 	jwtMiddleware = jwtMiddleware
-
 
 	router := gin.Default()
 	router.Use(static.Serve("/", static.LocalFile("./views", true)))
@@ -89,10 +88,10 @@ func main() {
 		})
 	}
 
-	api.GET("/jokes", authMiddleware() ,JokeHandler)
-	api.POST("/jokes/like/:jokeID", authMiddleware() ,LikeJoke)
+	api.GET("/jokes", authMiddleware(), JokeHandler)
+	api.POST("/jokes/like/:jokeID", authMiddleware(), LikeJoke)
 
-	router.Run(":8080")
+	router.Run(":3000")
 }
 
 func JokeHandler(c *gin.Context) {
@@ -101,25 +100,25 @@ func JokeHandler(c *gin.Context) {
 }
 
 func LikeJoke(c *gin.Context) {
-	 // confirm Joke ID sent is valid
-	if jokeid,err:= strconv.Atoi(c.Param("jokeID")); err == nil {
+	// confirm Joke ID sent is valid
+	if jokeid, err := strconv.Atoi(c.Param("jokeID")); err == nil {
 		for i := 0; i < len(jokes); i++ {
 			if jokes[i].ID == jokeid {
 				jokes[i].Likes += 1
 			}
 		}
-		  // return a pointer to the updated jokes list
-		c.JSON(http.StatusOK, &jokes)  
-	}else{
+		// return a pointer to the updated jokes list
+		c.JSON(http.StatusOK, &jokes)
+	} else {
 		// Joke ID is invalid
 		c.AbortWithStatus(http.StatusNotFound)
 	}
 }
 
-func authMiddleware()gin.HandlerFunc{
-	return func (c *gin.Context)  {
+func authMiddleware() gin.HandlerFunc {
+	return func(c *gin.Context) {
 		// Get the client secret key
-		err:= jwtMiddleware.CheckJWT(c.Writer, c.Request)
+		err := jwtMiddleware.CheckJWT(c.Writer, c.Request)
 		if err != nil {
 			// Token not found
 			fmt.Println(err)
@@ -132,8 +131,8 @@ func authMiddleware()gin.HandlerFunc{
 }
 
 func getPemCert(token *jwt.Token) (string, error) {
-	cert:= ""
-	resp, err:= http.Get(os.Getenv("AUTH0_DOMAIN") + ".well-known/jwks.json")
+	cert := ""
+	resp, err := http.Get(os.Getenv("AUTH0_DOMAIN") + ".well-known/jwks.json")
 	if err != nil {
 		return cert, err
 	}
@@ -146,9 +145,9 @@ func getPemCert(token *jwt.Token) (string, error) {
 		return cert, err
 	}
 
-	x5c:= jwks.Keys[0].X5c
+	x5c := jwks.Keys[0].X5c
 	for k, v := range x5c {
-		if token.Header["kid"]== jwks.Keys[k].Kid {
+		if token.Header["kid"] == jwks.Keys[k].Kid {
 			cert = "-----BEGIN CERTIFICATE-----\n" + v + "\n-----END CERTIFICATE-----"
 		}
 	}
