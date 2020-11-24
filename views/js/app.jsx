@@ -1,7 +1,7 @@
 const AUTH0_CLIENT_ID = "TJGB1cMKHOzIXSEDP2s2rWXSwdpDNElC";
 const AUTH0_DOMAIN = "dev-0fuju3jk.eu.auth0.com";
 const AUTH0_CALLBACK_URL = location.href;
-const AUTH0_API_AUDIENCE = "golang-gin";
+
 
 
 class App extends React.Component {
@@ -79,7 +79,7 @@ class Home extends React.Component {
             domain: AUTH0_DOMAIN,
             clientID: AUTH0_CLIENT_ID,
             scope: "openid profile",
-            audience: AUTH0_API_AUDIENCE,
+            //audience: AUTH0_API_AUDIENCE,
             responseType: "token id_token",
             redirectUri: AUTH0_CALLBACK_URL
         });

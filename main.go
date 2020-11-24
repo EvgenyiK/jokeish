@@ -15,12 +15,8 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-var jwtMiddleware jwtmiddleware.JWTMiddleware
-
-type Joke struct {
-	ID    int    `json:"id" binding:"requred"`
-	Likes int    `json:"likes"`
-	Joke  string `json:"joke" binding:"required"`
+type Response struct {
+	Message string `json:"message"`
 }
 
 type Jwks struct {
@@ -36,6 +32,13 @@ type JSONWebKeys struct {
 	X5c []string `json:"x5c"`
 }
 
+type Joke struct {
+	ID    int    `json:"id" binding:"required"`
+	Likes int    `json:"likes"`
+	Joke  string `json:"joke" binding:"required"`
+}
+
+/** we'll create a list of jokes */
 var jokes = []Joke{
 	Joke{1, 0, "Did you hear about the restaurant on the moon? Great food, no atmosphere."},
 	Joke{2, 0, "What do you call a fake noodle? An Impasta."},
@@ -46,8 +49,9 @@ var jokes = []Joke{
 	Joke{7, 0, "How does a penguin build it's house? Igloos it together."},
 }
 
-func main() {
+var jwtMiddleWare *jwtmiddleware.JWTMiddleware
 
+func main() {
 	jwtMiddleware := jwtmiddleware.New(jwtmiddleware.Options{
 		ValidationKeyGetter: func(token *jwt.Token) (interface{}, error) {
 			aud := os.Getenv("AUTH0_API_AUDIENCE")
@@ -55,11 +59,11 @@ func main() {
 			if !checkAudience {
 				return token, errors.New("Invalid audience.")
 			}
-
+			// verify iss claim
 			iss := os.Getenv("AUTH0_DOMAIN")
 			checkIss := token.Claims.(jwt.MapClaims).VerifyIssuer(iss, false)
 			if !checkIss {
-				return token, errors.New("Invalid issuser.")
+				return token, errors.New("Invalid issuer.")
 			}
 
 			cert, err := getPemCert(token)
@@ -67,18 +71,19 @@ func main() {
 				log.Fatalf("could not get cert: %+v", err)
 			}
 
-			result, _ := jwt.ParseECPublicKeyFromPEM([]byte(cert))
+			result, _ := jwt.ParseRSAPublicKeyFromPEM([]byte(cert))
 			return result, nil
 		},
 		SigningMethod: jwt.SigningMethodRS256,
 	})
 
-	// register our actual jwtMiddleware
-	jwtMiddleware = jwtMiddleware
-
+	jwtMiddleWare = jwtMiddleware
+	// Set the router as the default one shipped with Gin
 	router := gin.Default()
+
+	// Serve the frontend
 	router.Use(static.Serve("/", static.LocalFile("./views", true)))
-	//route group for the API
+
 	api := router.Group("/api")
 	{
 		api.GET("/", func(c *gin.Context) {
@@ -86,48 +91,11 @@ func main() {
 				"message": "pong",
 			})
 		})
+		api.GET("/jokes", authMiddleware(), JokeHandler)
+		api.POST("/jokes/like/:jokeID", authMiddleware(), LikeJoke)
 	}
-
-	api.GET("/jokes", authMiddleware(), JokeHandler)
-	api.POST("/jokes/like/:jokeID", authMiddleware(), LikeJoke)
-
+	// Start the app
 	router.Run(":3000")
-}
-
-func JokeHandler(c *gin.Context) {
-	c.Header("Content-Type", "application/json")
-	c.JSON(http.StatusOK, jokes)
-}
-
-func LikeJoke(c *gin.Context) {
-	// confirm Joke ID sent is valid
-	if jokeid, err := strconv.Atoi(c.Param("jokeID")); err == nil {
-		for i := 0; i < len(jokes); i++ {
-			if jokes[i].ID == jokeid {
-				jokes[i].Likes += 1
-			}
-		}
-		// return a pointer to the updated jokes list
-		c.JSON(http.StatusOK, &jokes)
-	} else {
-		// Joke ID is invalid
-		c.AbortWithStatus(http.StatusNotFound)
-	}
-}
-
-func authMiddleware() gin.HandlerFunc {
-	return func(c *gin.Context) {
-		// Get the client secret key
-		err := jwtMiddleware.CheckJWT(c.Writer, c.Request)
-		if err != nil {
-			// Token not found
-			fmt.Println(err)
-			c.Abort()
-			c.Writer.WriteHeader(http.StatusUnauthorized)
-			c.Writer.Write([]byte("Unauthorized"))
-			return
-		}
-	}
 }
 
 func getPemCert(token *jwt.Token) (string, error) {
@@ -153,8 +121,47 @@ func getPemCert(token *jwt.Token) (string, error) {
 	}
 
 	if cert == "" {
-		return cert, errors.New("unable to find appropriate key.")
+		return cert, errors.New("unable to find appropriate key")
 	}
 
 	return cert, nil
+}
+
+// authMiddleware intercepts the requests, and check for a valid jwt token
+func authMiddleware() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		// Get the client secret key
+		err := jwtMiddleWare.CheckJWT(c.Writer, c.Request)
+		if err != nil {
+			// Token not found
+			fmt.Println(err)
+			c.Abort()
+			c.Writer.WriteHeader(http.StatusUnauthorized)
+			c.Writer.Write([]byte("Unauthorized"))
+			return
+		}
+	}
+}
+
+// JokeHandler returns a list of jokes available (in memory)
+func JokeHandler(c *gin.Context) {
+	c.Header("Content-Type", "application/json")
+
+	c.JSON(http.StatusOK, jokes)
+}
+
+func LikeJoke(c *gin.Context) {
+	// Check joke ID is valid
+	if jokeid, err := strconv.Atoi(c.Param("jokeID")); err == nil {
+		// find joke and increment likes
+		for i := 0; i < len(jokes); i++ {
+			if jokes[i].ID == jokeid {
+				jokes[i].Likes = jokes[i].Likes + 1
+			}
+		}
+		c.JSON(http.StatusOK, &jokes)
+	} else {
+		// the jokes ID is invalid
+		c.AbortWithStatus(http.StatusNotFound)
+	}
 }
